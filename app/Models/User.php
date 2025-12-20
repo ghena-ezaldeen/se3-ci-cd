@@ -17,11 +17,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable,HasApiTokens;
 
     /**
      * @var list<string>
@@ -56,6 +57,20 @@ class User extends Authenticatable
     public function roles()
     {
         return $this->belongsToMany(Role::class)->withTimestamps();
+    }
+
+    public function hasRole(string $role)
+    {
+        return $this->roles->contains('name', $role);
+    }
+
+    public function hasPermission(string $permission)
+    {
+        return $this->roles()
+            ->whereHas('permissions', fn ($q) =>
+            $q->where('name', $permission)
+            )
+            ->exists();
     }
 
     public function accounts()

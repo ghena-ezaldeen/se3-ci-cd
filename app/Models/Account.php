@@ -14,6 +14,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Patterns\State\AccountStateInterface;
+use App\Patterns\State\ActiveState ;
+use App\Patterns\State\ClosedState;
+use App\Patterns\State\FrozenState;
+use App\Patterns\State\SuspendedState;
+
 
 class Account extends Model
 {
@@ -32,6 +38,17 @@ class Account extends Model
         'currency',
         'interest_rate',
     ];
+    public function stateObject(): AccountStateInterface
+    {
+        return match ($this->state) {
+            'active'    => new ActiveState(),
+            'frozen'    => new FrozenState(),
+            'suspended' => new SuspendedState(),
+            'closed'    => new ClosedState(),
+            default     => throw new \DomainException('Invalid account state'),
+        };
+    }
+
 
     public function owner()
     {

@@ -12,6 +12,8 @@ namespace App\Services\Account;
 | loading concerns.
 */
 
+
+use App\Contracts\AccountRepositoryInterface;
 use App\Models\Account;
 use App\Patterns\Composite\AccountComponent;
 use App\Patterns\Composite\AccountComposite;
@@ -19,6 +21,13 @@ use App\Patterns\Composite\AccountLeaf;
 
 class AccountBalanceService
 {
+    protected AccountRepositoryInterface $accountRepo;
+
+    public function __construct(AccountRepositoryInterface $accountRepo)
+    {
+        $this->accountRepo = $accountRepo;
+    }
+
     public function computeAggregateBalance(Account $account): float
     {
         $component = $this->buildComponent($account);

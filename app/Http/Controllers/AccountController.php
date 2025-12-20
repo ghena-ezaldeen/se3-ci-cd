@@ -12,6 +12,9 @@ namespace App\Http\Controllers;
 | one place.
 */
 
+use App\Contracts\AccountServiceInterface;
+use App\Http\Requests\StoreAccountRequest;
+use App\Http\Requests\UpdateAccountRequest;
 use App\Models\Account;
 use App\Services\Account\AccountBalanceService;
 use Illuminate\Http\JsonResponse;
@@ -20,72 +23,60 @@ use Illuminate\Support\Str;
 
 class AccountController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    protected AccountServiceInterface $accountService;
+
+    public function __construct(AccountServiceInterface $accountService)
     {
-        $validated = $request->validate([
-            'user_id' => ['required', 'exists:users,id'],
-            'parent_id' => ['nullable', 'exists:accounts,id'],
-            'type' => ['required', 'string'],
-            'currency' => ['nullable', 'string', 'size:3'],
-            'balance' => ['nullable', 'numeric'],
-            'interest_rate' => ['nullable', 'numeric'],
-        ]);
+        $this->accountService = $accountService;
+    }
 
-        $account = Account::create([
-            'user_id' => $validated['user_id'],
-            'parent_id' => $validated['parent_id'] ?? null,
-            'account_number' => $this->generateAccountNumber(),
-            'type' => $validated['type'],
-            'state' => 'active',
-            'balance' => $validated['balance'] ?? 0,
-            'currency' => $validated['currency'] ?? 'USD',
-            'interest_rate' => $validated['interest_rate'] ?? 0,
-        ]);
+    public function store(StoreAccountRequest $request): JsonResponse
+    {
 
+        $this->authorize('create', Account::class);
+        $data = $request->validated();
+        $data['user_id'] = auth()->id();
+
+        $account = $this->accountService->createAccount($data);
         return response()->json($account, 201);
     }
 
-    public function update(Account $account, Request $request): JsonResponse
+    public function update(Account $account,  UpdateAccountRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'type' => ['nullable', 'string'],
-            'state' => ['nullable', 'string'],
-            'currency' => ['nullable', 'string', 'size:3'],
-            'balance' => ['nullable', 'numeric'],
-            'interest_rate' => ['nullable', 'numeric'],
+
+        $this->authorize('update', $account);
+        $data = $request->validated();
+        if (empty($data)) {
+            return response()->json(['message' => 'لا توجد بيانات صالحة للتحديث'], 422);
+        }
+
+        $updated = $this->accountService->updateAccount($account, $data);
+
+        return response()->json([
+            'message' => ' Account updated successfully',
+            'account' => $updated
         ]);
-
-        $account->fill($validated);
-        $account->save();
-
-        return response()->json($account);
     }
 
     public function close(Account $account): JsonResponse
     {
-        $account->state = 'closed';
-        $account->save();
+        $this->accountService->closeAccount($account);
 
         return response()->json([
-            'message' => 'Account closed successfully.',
-            'account' => $account,
+            'message' => 'Account closed successfully',
         ]);
     }
 
-    public function aggregateBalance(Account $account, AccountBalanceService $service): JsonResponse
+    public function aggregateBalance(Account $account,AccountBalanceService $balanceService): JsonResponse
     {
-        $total = $service->computeAggregateBalance($account);
 
         return response()->json([
             'account_id' => $account->id,
-            'aggregate_balance' => $total,
+            'aggregate_balance' => $balanceService->computeAggregateBalance($account),
             'currency' => $account->currency,
         ]);
     }
 
-    private function generateAccountNumber(): string
-    {
-        return sprintf('ACC-%s', Str::upper(Str::random(10)));
-    }
+
 }
 
