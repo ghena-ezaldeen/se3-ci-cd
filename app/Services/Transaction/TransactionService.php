@@ -1,39 +1,145 @@
 <?php
 
+namespace App\Services\Transaction;
+
 use App\Models\Account;
+use App\Models\Transaction;
+use App\Exceptions\InsufficientFundsException;
+use App\Exceptions\AccountNotActiveException;
 use App\Services\Account\AccountFeatureService;
+use App\Patterns\Decorator\OverdraftFeature;
+use App\Patterns\Decorator\AccountDecorator; // تأكد من استيراد هذا الكلاس
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
-class AccountTransactionService
+class TransactionService
 {
-    public function withdraw(Account $account, float $amount): void
+    public function __construct(
+        private AccountFeatureService $featureService,
+        private TransactionApprovalService $approvalService
+    ) {}
+
+    public function transfer(Account $from, Account $to, float $amount, string $description = '')
     {
-        $state = $account->stateObject();
+        return DB::transaction(function () use ($from, $to, $amount, $description) {
 
-        if (! $state->canWithdraw($account)) {
-            throw new DomainException('Withdrawal not allowed in current state');
-        }
+            // 1. التحقق من حالة الحساب
+            if ($from->state !== 'active') {
+                throw new AccountNotActiveException();
+            }
 
-        // حساب الرصيد المتاح باستخدام Decorator
-        $component = app(AccountFeatureService::class)
-            ->buildDecoratedComponent($account);
+            // 2. التحقق من الرصيد باستخدام الـ Decorator Pattern
+            $decoratedAccount = $this->featureService->buildDecoratedComponent($from);
 
-        if ($component->getBalance() < $amount) {
-            throw new DomainException('Insufficient balance');
-        }
+            $overdraft = null;
+            // فحص: هل الكائن من نوع Decorator؟ إذا نعم، يمكننا البحث عن ميزة
+            if ($decoratedAccount instanceof AccountDecorator) {
+                $overdraft = $decoratedAccount->findDecorator(OverdraftFeature::class);
+            }
 
-        $account->balance -= $amount;
-        $account->save();
+            if ($overdraft) {
+                if (!$overdraft->canWithdraw($amount)) {
+                    throw new InsufficientFundsException();
+                }
+            } else {
+                // حساب عادي أو Leaf لا يحتوي على Decorators
+                if ($from->balance < $amount) {
+                    throw new InsufficientFundsException();
+                }
+            }
+
+            // 3. إنشاء سجل المعاملة
+            $transaction = Transaction::create([
+                'from_account_id' => $from->id,
+                'to_account_id'   => $to->id,
+                'amount'          => $amount,
+                'type'            => 'transfer',
+                'status'          => 'pending',
+                'initiated_by'    => Auth::id() ?? 1,
+                'description'     => $description,
+                'currency'        => $from->currency,
+            ]);
+
+            // 4. نظام الموافقات
+            if ($this->approvalService->approveTransaction($transaction)) {
+                $from->decrement('balance', $amount);
+                $to->increment('balance', $amount);
+                $transaction->update(['status' => 'completed']);
+            } else {
+                $transaction->update(['status' => 'rejected']);
+                throw new \Exception("العملية مرفوضة من قبل نظام الرقابة والتدقيق.");
+            }
+
+            return $transaction;
+        });
     }
 
-    public function deposit(Account $account, float $amount): void
+    public function deposit(Account $account, float $amount, string $description = 'Deposit')
     {
-        $state = $account->stateObject();
+        return DB::transaction(function () use ($account, $amount, $description) {
 
-        if (! $state->canDeposit($account)) {
-            throw new DomainException('Deposit not allowed in current state');
-        }
+            // زيادة الرصيد (لا تحتاج تحقق معقد)
+            $account->increment('balance', $amount);
 
-        $account->balance += $amount;
-        $account->save();
+            // إنشاء السجل
+            return Transaction::create([
+                'to_account_id'   => $account->id,
+                'from_account_id' => null, // لأنه إيداع خارجي
+                'amount'          => $amount,
+                'type'            => 'deposit',
+                'status'          => 'completed',
+                'initiated_by'    => Auth::id() ?? 1,
+                'description'     => $description,
+                'currency'        => $account->currency,
+            ]);
+        });
+    }
+
+    /**
+     * عملية سحب (Withdraw)
+     */
+    public function withdraw(Account $account, float $amount, string $description = 'Withdraw')
+    {
+        return DB::transaction(function () use ($account, $amount, $description) {
+
+            // 1. التحقق من الحالة
+            if ($account->state !== 'active') {
+                throw new AccountNotActiveException();
+            }
+
+            // 2. التحقق من الرصيد (مع Decorators)
+            $decoratedAccount = $this->featureService->buildDecoratedComponent($account);
+
+            $overdraft = null;
+            if ($decoratedAccount instanceof AccountDecorator) {
+                $overdraft = $decoratedAccount->findDecorator(OverdraftFeature::class);
+            }
+
+            if ($overdraft) {
+                if (!$overdraft->canWithdraw($amount)) {
+                    throw new InsufficientFundsException();
+                }
+            } else {
+                if ($account->balance < $amount) {
+                    throw new InsufficientFundsException();
+                }
+            }
+
+            // 3. الخصم
+            $account->decrement('balance', $amount);
+
+            // 4. إنشاء السجل
+            return Transaction::create([
+                'from_account_id' => $account->id,
+                'to_account_id'   => null,
+                'amount'          => $amount,
+                'type'            => 'withdraw',
+                'status'          => 'completed',
+                'initiated_by'    => Auth::id() ?? 1,
+                'description'     => $description,
+                'currency'        => $account->currency,
+            ]);
+        });
     }
 }
+

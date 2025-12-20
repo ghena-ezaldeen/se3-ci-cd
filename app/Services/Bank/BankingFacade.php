@@ -39,4 +39,16 @@ class BankingFacade
 
         return $this->transactionService->transfer($from, $to, $amount, $note);
     }
+
+    public function deposit(int $accountId, float $amount, string $note = '')
+    {
+        $account = Account::findOrFail($accountId);
+        return $this->transactionService->deposit($account, $amount, $note);
+    }
+
+    public function withdraw(int $accountId, float $amount, string $note = '')
+    {
+        $account = Account::findOrFail($accountId);
+        return $this->transactionService->withdraw($account, $amount, $note);
+    }
 }

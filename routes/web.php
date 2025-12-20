@@ -17,4 +17,11 @@ Route::prefix('accounts')->name('accounts.')->group(function () {
     Route::post('/{account}/close', [AccountController::class, 'close'])->name('close');
    // Route::get('/{account}/aggregate-balance', [AccountController::class, 'aggregateBalance'])->name('aggregate');
 });
+
 */
+
+
+Route::get('/banking-dashboard', function () {
+    return view('banking.dashboard');
+});
+
