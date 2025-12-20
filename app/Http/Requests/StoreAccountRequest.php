@@ -25,7 +25,7 @@ class StoreAccountRequest extends FormRequest
         return [
                  'parent_id' => ['nullable', Rule::exists('accounts', 'id')
                      ->where(fn ($q) => $q->where('user_id', auth()->id()))],
-                 'type' => ['required', 'string'],
+                 'type' => ['required','string','in:savings,current,loan,investment'],
                  'currency' => ['nullable', 'string', 'size:3'],
                  'balance' => ['nullable', 'numeric'],
                  'interest_rate' => ['nullable', 'numeric','min:0'],

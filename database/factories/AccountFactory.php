@@ -24,11 +24,12 @@ class AccountFactory extends Factory
 
         public function definition(): array
     {
+        $types = ['savings', 'current', 'loan', 'investment'];
         return [
             'user_id' => User::factory(),
             'parent_id' => null,
             'account_number' => 'ACC-' . Str::upper(Str::random(10)),
-            'type' => 'savings',
+            'type' => $this->faker->randomElement($types),
             'state' => 'active',
             'balance' => 1000,
             'currency' => 'USD',
