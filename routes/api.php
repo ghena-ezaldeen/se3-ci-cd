@@ -5,6 +5,7 @@ use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AccountStateController;
 use App\Http\Controllers\AuthController;
 
+use App\Http\Controllers\TransactionReportController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +28,15 @@ Route::post('/login', [AuthController::class, 'login']);
 //Route::middleware('auth:sanctum')->post('/createFcmToken', [AuthController::class, 'createFcmToken']);
 
 
+
+Route::post('/reports/audit-logs', [TransactionReportController::class, 'auditLogs'])
+    ->middleware('auth:sanctum')
+    ->name('reports.audit-logs');
+
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/reports/transaction_reports', [TransactionReportController::class, 'transactions']);
+});
 
 Route::middleware('auth:sanctum')
     ->prefix('accounts')

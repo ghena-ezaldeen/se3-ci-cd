@@ -10,7 +10,10 @@ use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvid
 class AuthServiceProvider extends ServiceProvider
 {
     protected $policies = [
-        Account::class => AccountPolicy::class,
+
+            Account::class => \App\Policies\AccountPolicy::class,
+            'report' => \App\Policies\ReportPolicy::class, // المفتاح يمكن أن يكون أي string
+
     ];
 
     public function boot(): void

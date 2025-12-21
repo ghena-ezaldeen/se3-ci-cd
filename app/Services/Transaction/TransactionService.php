@@ -16,7 +16,8 @@ class TransactionService
 {
     public function __construct(
         private AccountFeatureService $featureService,
-        private TransactionApprovalService $approvalService
+        private TransactionApprovalService $approvalService,
+        private TransactionAuditService $auditService
     ) {}
 
     public function transfer(Account $from, Account $to, float $amount, string $description = '')
@@ -59,14 +60,34 @@ class TransactionService
                 'description'     => $description,
                 'currency'        => $from->currency,
             ]);
+            //logging
+            $this->auditService->log(
+                $transaction,
+                'created',
+                'Transaction created and pending approval'
+            );
 
             // 4. نظام الموافقات
             if ($this->approvalService->approveTransaction($transaction)) {
+
                 $from->decrement('balance', $amount);
                 $to->increment('balance', $amount);
                 $transaction->update(['status' => 'completed']);
+
+                //logging
+                $this->auditService->log(
+                    $transaction,
+                    'completed',
+                    'Funds transferred successfully'
+                );
             } else {
                 $transaction->update(['status' => 'rejected']);
+                //logging
+                $this->auditService->log(
+                    $transaction,
+                    'rejected',
+                    'Rejected by approval system'
+                );
                 throw new \Exception("العملية مرفوضة من قبل نظام الرقابة والتدقيق.");
             }
 
@@ -78,11 +99,16 @@ class TransactionService
     {
         return DB::transaction(function () use ($account, $amount, $description) {
 
+            // استخدام State Pattern للتحقق من إمكانية الإيداع
+            if (!$account->stateObject()->canDeposit($account)) {
+                throw new AccountNotActiveException("Cannot deposit to current state: {$account->state}");
+            }
+
             // زيادة الرصيد (لا تحتاج تحقق معقد)
             $account->increment('balance', $amount);
 
             // إنشاء السجل
-            return Transaction::create([
+            $transaction = Transaction::create([
                 'to_account_id'   => $account->id,
                 'from_account_id' => null, // لأنه إيداع خارجي
                 'amount'          => $amount,
@@ -92,6 +118,13 @@ class TransactionService
                 'description'     => $description,
                 'currency'        => $account->currency,
             ]);
+
+            $this->auditService->log(
+                $transaction,
+                'completed',
+                'Deposit completed successfully'
+            );
+            return $transaction;
         });
     }
 
@@ -103,8 +136,9 @@ class TransactionService
         return DB::transaction(function () use ($account, $amount, $description) {
 
             // 1. التحقق من الحالة
-            if ($account->state !== 'active') {
-                throw new AccountNotActiveException();
+            // استخدام State Pattern للتحقق من إمكانية السحب
+            if (!$account->stateObject()->canWithdraw($account)) {
+                throw new AccountNotActiveException("Cannot withdraw from current state: {$account->state}");
             }
 
             // 2. التحقق من الرصيد (مع Decorators)
@@ -129,7 +163,7 @@ class TransactionService
             $account->decrement('balance', $amount);
 
             // 4. إنشاء السجل
-            return Transaction::create([
+            $transaction= Transaction::create([
                 'from_account_id' => $account->id,
                 'to_account_id'   => null,
                 'amount'          => $amount,
@@ -139,6 +173,13 @@ class TransactionService
                 'description'     => $description,
                 'currency'        => $account->currency,
             ]);
+
+            $this->auditService->log(
+                $transaction,
+                'completed',
+                'Withdraw completed successfully'
+            );
+            return $transaction;
         });
     }
 }

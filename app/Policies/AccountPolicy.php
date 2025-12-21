@@ -54,7 +54,6 @@ class AccountPolicy
             : Response::deny('You do not have permission to change the account state');
     }
 
-
     /**
      * Determine whether the user can delete the model.
      */
