@@ -30,6 +30,8 @@ jobs:
           php artisan key:generate
           mkdir -p database
           touch database/testing.sqlite
+          echo "DB_CONNECTION=sqlite" >> .env
+          echo "DB_DATABASE=${{ github.workspace }}/database/testing.sqlite" >> .env
 
       - name: Run migrations
         run: php artisan migrate --force
