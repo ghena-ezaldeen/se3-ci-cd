@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\AccountActivityEvent;
+use App\Models\Account;
 use App\Services\BankingFacade;
 use Illuminate\Http\Request;
 
@@ -26,6 +28,7 @@ class TransactionController extends Controller
                 $request->amount,
                 $request->description ?? 'No description'
             );
+            event(new AccountActivityEvent(Account::find($request->from_account_id), 'transfer'));
 
             return response()->json([
                 'message' => 'Transaction completed successfully',
@@ -48,6 +51,7 @@ class TransactionController extends Controller
             $request->amount,
             $request->description ?? 'Deposit'
         );
+        event(new AccountActivityEvent($transaction->from_account_id, 'deposit'));
 
         return response()->json(['message' => 'Deposit successful', 'data' => $transaction]);
     }
@@ -65,6 +69,8 @@ class TransactionController extends Controller
                 $request->amount,
                 $request->description ?? 'Withdraw'
             );
+            event(new AccountActivityEvent($transaction->from_account_id, 'withdraw'));
+            
             return response()->json(['message' => 'Withdraw successful', 'data' => $transaction]);
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 422);
